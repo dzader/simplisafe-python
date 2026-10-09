@@ -12,7 +12,16 @@
 `simplisafe-python` (hereafter referred to as `simplipy`) is a Python3,
 `asyncio`-driven interface to the unofficial [SimpliSafe™][simplisafe] API. With it,
 users can get data on their system (including available sensors), set the system state,
-and more.
+stream camera data, take snapshots, and more.
+
+## Features
+
+- System management (get status, set alarm state)
+- Sensor monitoring (door/window sensors, motion detectors, etc.)
+- **Camera streaming** (live video streams, snapshots, recording to files)
+- Lock control (for SimpliSafe smart locks)
+- Real-time event monitoring via WebSocket
+- Comprehensive async/await support
 
 # Documentation
 

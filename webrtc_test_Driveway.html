@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpliSafe Driveway - WebRTC Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e1e5e9;
+        }
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        #videoElement {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .connect-btn {
+            background: #28a745;
+            color: white;
+        }
+        .connect-btn:hover {
+            background: #218838;
+        }
+        .disconnect-btn {
+            background: #dc3545;
+            color: white;
+        }
+        .disconnect-btn:hover {
+            background: #c82333;
+        }
+        .connect-btn:disabled, .disconnect-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .debug {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 SimpliSafe Camera: Driveway</h1>
+            <p>WebRTC Live Stream Test</p>
+        </div>
+
+        <div class="video-container">
+            <video id="videoElement" autoplay muted playsinline>
+                <p>Video not supported by your browser.</p>
+            </video>
+        </div>
+
+        <div class="controls">
+            <button id="connectBtn" class="connect-btn">
+                <span id="connectText">Connect to Camera</span>
+                <span id="connectLoading" class="loading" style="display: none;"></span>
+            </button>
+            <button id="disconnectBtn" class="disconnect-btn" disabled>Disconnect</button>
+        </div>
+
+        <div id="status" class="status disconnected">Ready to connect</div>
+
+        <div class="info">
+            <h3>📋 Instructions:</h3>
+            <ol>
+                <li><strong>Click "Connect to Camera"</strong> to start the WebRTC connection</li>
+                <li><strong>Wait 10-30 seconds</strong> for the outdoor camera to wake up</li>
+                <li><strong>Video should appear</strong> once connected successfully</li>
+                <li><strong>Check the debug log</strong> below if there are any issues</li>
+            </ol>
+            
+            <h3>🔧 Requirements:</h3>
+            <ul>
+                <li>Modern browser (Chrome, Edge, Safari, Firefox)</li>
+                <li>Secure connection (HTTPS or localhost)</li>
+                <li>Camera must be online and charged</li>
+            </ul>
+        </div>
+
+        <div id="errorContainer" style="display: none;"></div>
+
+        <details>
+            <summary><strong>🐛 Debug Information</strong></summary>
+            <div id="debugLog" class="debug">Debug log will appear here...
+</div>
+        </details>
+    </div>
+
+    <!-- LiveKit SDK from CDN -->
+    <script src="https://unpkg.com/livekit-client@2.5.7/dist/livekit-client.umd.js"></script>
+    
+    <script>
+        // Connection configuration
+        const config = {"url": "wss://livestream.services.simplisafe.com:7880", "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NTA3ODg1NzcsImlzcyI6IkRSYWh1RlFQdzIyN0ZGMjNWV29qZ0d0WkNQZUw2c3VRdkF4amN5YkoiLCJtZXRhZGF0YSI6IntcInR5cGVcIjpcIlVTRVJcIixcImlkZW50aXR5XCI6XCI0Mjg3NjE2X2Q5NWMxYzg5YzEwMWFhNzI0NjU1ODhiY2M2ZTdhYTgzXCJ9IiwibmJmIjoxNzUwNzg3OTc3LCJzdWIiOiI0Mjg3NjE2X2Q5NWMxYzg5YzEwMWFhNzI0NjU1ODhiY2M2ZTdhYTgzIiwidmlkZW8iOnsiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuUHVibGlzaERhdGEiOnRydWUsImNhblN1YnNjcmliZSI6dHJ1ZSwicm9vbSI6ImUwYWU0NDIzMjdkYjRkM2JhODRjNzkzZmYxMTBhNTM5XzQ1MzgwMjAiLCJyb29tSm9pbiI6dHJ1ZX19.1qImuoJat3FR8h_fpT05aWBfqejOGe67mb9sRcC1yJU", "camera_status": "online"};
+        
+        // UI elements
+        const videoElement = document.getElementById('videoElement');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const statusDiv = document.getElementById('status');
+        const errorContainer = document.getElementById('errorContainer');
+        const debugLog = document.getElementById('debugLog');
+        const connectText = document.getElementById('connectText');
+        const connectLoading = document.getElementById('connectLoading');
+        
+        // LiveKit room and connection
+        let room = null;
+        let isConnecting = false;
+        
+        // Debug logging
+        function log(message) {
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            debugLog.textContent += `[${timestamp}] ${message}
+`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+            console.log(message);
+        }
+        
+        // Show error message
+        function showError(message) {
+            errorContainer.innerHTML = `<div class="error"><strong>❌ Error:</strong> ${message}</div>`;
+            errorContainer.style.display = 'block';
+            log(`ERROR: ${message}`);
+        }
+        
+        // Update connection status
+        function updateStatus(message, className) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${className}`;
+            log(`STATUS: ${message}`);
+        }
+        
+        // Update button states
+        function updateButtons(connecting) {
+            isConnecting = connecting;
+            connectBtn.disabled = connecting || (room && room.state === 'connected');
+            disconnectBtn.disabled = !room || room.state === 'disconnected';
+            
+            if (connecting) {
+                connectText.style.display = 'none';
+                connectLoading.style.display = 'inline-block';
+            } else {
+                connectText.style.display = 'inline-block';
+                connectLoading.style.display = 'none';
+            }
+        }
+        
+        // Connect to camera
+        async function connectToCamera() {
+            try {
+                // Hide previous errors
+                errorContainer.style.display = 'none';
+                
+                // Check if LiveKit is available
+                if (typeof LiveKit === 'undefined') {
+                    throw new Error('LiveKit SDK not loaded. Please check your internet connection.');
+                }
+                
+                log('Starting connection to SimpliSafe camera...');
+                updateStatus('Connecting to camera...', 'connecting');
+                updateButtons(true);
+                
+                // Create room
+                room = new LiveKit.Room({
+                    adaptiveStream: true,
+                    dynacast: true,
+                    videoCaptureDefaults: {
+                        resolution: LiveKit.VideoPresets.h720.resolution,
+                    },
+                });
+                
+                // Set up event handlers
+                room.on(LiveKit.RoomEvent.Connected, () => {
+                    log('Successfully connected to LiveKit room');
+                    updateStatus('Connected! Waiting for video...', 'connecting');
+                });
+                
+                room.on(LiveKit.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    log(`Track subscribed: ${track.kind} from ${participant.identity}`);
+                    
+                    if (track.kind === LiveKit.Track.Kind.Video) {
+                        log('Video track received, attaching to video element');
+                        track.attach(videoElement);
+                        updateStatus('✅ Video streaming successfully!', 'connected');
+                        updateButtons(false);
+                    }
+                });
+                
+                room.on(LiveKit.RoomEvent.TrackUnsubscribed, (track) => {
+                    log('Track unsubscribed');
+                    track.detach();
+                });
+                
+                room.on(LiveKit.RoomEvent.Disconnected, (reason) => {
+                    log(`Disconnected from room: ${reason}`);
+                    updateStatus('Disconnected', 'disconnected');
+                    updateButtons(false);
+                    videoElement.srcObject = null;
+                });
+                
+                room.on(LiveKit.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+                    log(`Connection quality: ${quality} for ${participant?.identity || 'local'}`);
+                });
+                
+                room.on(LiveKit.RoomEvent.ParticipantConnected, (participant) => {
+                    log(`Participant joined: ${participant.identity}`);
+                });
+                
+                // Connect with timeout
+                log(`Connecting to: ${config.url}`);
+                log('Token length: ' + config.token.length + ' characters');
+                
+                const connectPromise = room.connect(config.url, config.token);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Connection timeout after 30 seconds')), 30000)
+                );
+                
+                await Promise.race([connectPromise, timeoutPromise]);
+                
+                log('Connection established, waiting for video tracks...');
+                
+                // Wait a bit more for tracks to be available
+                setTimeout(() => {
+                    if (room.remoteParticipants.size === 0) {
+                        log('No remote participants found. Camera may be sleeping or offline.');
+                        updateStatus('Camera connected but no video available. Camera may be sleeping.', 'connecting');
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                log(`Connection failed: ${error.message}`);
+                showError(`Connection failed: ${error.message}`);
+                updateStatus('Connection failed', 'disconnected');
+                updateButtons(false);
+                
+                if (room) {
+                    room.disconnect();
+                    room = null;
+                }
+            }
+        }
+        
+        // Disconnect from camera
+        function disconnectFromCamera() {
+            if (room) {
+                log('Disconnecting from camera...');
+                room.disconnect();
+                room = null;
+            }
+            videoElement.srcObject = null;
+            updateStatus('Disconnected', 'disconnected');
+            updateButtons(false);
+        }
+        
+        // Button event listeners
+        connectBtn.addEventListener('click', connectToCamera);
+        disconnectBtn.addEventListener('click', disconnectFromCamera);
+        
+        // Initialize
+        log('WebRTC test page loaded');
+        log('LiveKit SDK available: ' + (typeof LiveKit !== 'undefined'));
+        log('Camera: Driveway');
+        log('Ready to connect...');
+        
+        // Auto-expand debug on errors
+        window.addEventListener('error', () => {
+            document.querySelector('details').open = true;
+        });
+        
+    </script>
+</body>
+</html>

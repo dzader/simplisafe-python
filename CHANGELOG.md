@@ -3,6 +3,26 @@
 _NOTE:_ this file is here for posterity; going forward, release info can be found here:
 https://github.com/bachya/simplisafe-python/releases
 
+## Unreleased
+
+### Added
+- **Camera streaming support**: Added comprehensive camera streaming functionality
+  - `async_get_snapshot()`: Take snapshots from cameras
+  - `async_stream_data()`: Stream live video data (FLV or MJPEG formats)
+  - `async_save_stream_to_file()`: Record streams directly to files
+  - `snapshot_url()`: Generate snapshot URLs
+  - `stream_url()`: Generate streaming URLs with format support
+  - `StreamFormat` enum for FLV and MJPEG formats
+  - Support for different video resolutions and audio encodings
+  - Comprehensive error handling and retry logic
+- Added example scripts for camera streaming usage
+- Added documentation for camera streaming features
+
+### Enhanced
+- Extended `Camera` class with streaming methods and properties
+- Updated documentation to include camera streaming capabilities
+- Added comprehensive tests for camera streaming functionality
+
 ## 3.0.0
 
 - Convert library to use `asyncio`
