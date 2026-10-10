@@ -41,6 +41,18 @@ class RequestError(SimplipyError):
     pass
 
 
+class LiveViewError(RequestError):
+    """An error related to invalid or unavailable camera live-view data."""
+
+    pass
+
+
+class UnsupportedStreamProviderError(LiveViewError):
+    """An error related to a camera with an unsupported stream provider."""
+
+    pass
+
+
 class WebsocketError(SimplipyError):
     """An error related to generic websocket errors."""
 

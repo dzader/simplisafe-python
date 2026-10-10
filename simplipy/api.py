@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 from json.decoder import JSONDecodeError
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import backoff
 from aiohttp import ClientSession
@@ -205,7 +206,13 @@ class API:  # pylint: disable=too-many-instance-attributes
         self.websocket = WebsocketClient(self)
 
     async def _async_api_request(
-        self, method: str, endpoint: str, url_base: str = API_URL_BASE, **kwargs: Any
+        self,
+        method: str,
+        endpoint: str,
+        url_base: str = API_URL_BASE,
+        *,
+        sensitive_response: bool = False,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Make an API request.
 
@@ -213,13 +220,19 @@ class API:  # pylint: disable=too-many-instance-attributes
             method: An HTTP method.
             endpoint: A relative API endpoint.
             url_base: The base URL of the API.
+            sensitive_response: Whether to omit the payload from debug logs.
             **kwargs: Additional kwargs to send with the request.
 
         Returns:
             An API response payload.
         """
+        sensitive_response = (
+            sensitive_response
+            or endpoint == "oauth/token"
+            or endpoint.endswith("/live-view")
+        )
         kwargs.setdefault("headers", {})
-        kwargs["headers"].setdefault("Host", API_URL_HOSTNAME)
+        kwargs["headers"].setdefault("Host", urlsplit(url_base).netloc)
         kwargs["headers"]["Content-Type"] = "application/json; charset=utf-8"
         kwargs["headers"]["User-Agent"] = DEFAULT_USER_AGENT
         if self.access_token:
@@ -231,7 +244,7 @@ class API:  # pylint: disable=too-many-instance-attributes
                 **API_COOKIE_OVERRIDES,
             }
 
-        data: dict[str, Any] | str = {}
+        data: Any = {}
         async with self.session.request(
             method, f"{url_base}/{endpoint}", **kwargs
         ) as resp:
@@ -252,7 +265,17 @@ class API:  # pylint: disable=too-many-instance-attributes
                 message = data.replace('"', "")
                 data = {"error": message}
 
-            LOGGER.debug("Data received from /%s: %s", endpoint, data)
+            if sensitive_response:
+                LOGGER.debug("Response received from /%s (payload omitted)", endpoint)
+            else:
+                LOGGER.debug("Data received from /%s: %s", endpoint, data)
+
+            # Command endpoints can acknowledge success with an empty body.
+            # Credential endpoints require an object and must reject null.
+            if data is None and not sensitive_response:
+                data = {}
+            if not isinstance(data, dict):
+                raise RequestError("Expected a JSON object from the API")
 
             raise_on_data_error(data)
             resp.raise_for_status()

@@ -1,0 +1,12 @@
+{
+  "signedChannelEndpoint": "wss://signal.example.test/connect?X-Amz-Signature=temporary-signature",
+  "clientId": "viewer-id",
+  "iceServers": [
+    {"urls": ["stun:stun.example.test:443"]},
+    {
+      "urls": ["turns:turn.example.test:443?transport=tcp"],
+      "username": "temporary-turn-user",
+      "credential": "temporary-turn-password"
+    }
+  ]
+}

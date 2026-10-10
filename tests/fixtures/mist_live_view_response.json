@@ -1,0 +1,7 @@
+{
+  "cameraStatus": "online",
+  "liveKitDetails": {
+    "liveKitURL": "wss://livekit.example.test",
+    "userToken": "temporary-livekit-token"
+  }
+}

@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from simplipy.const import LOGGER
 from simplipy.device import DeviceV3
+from simplipy.device.live_view import (
+    CameraLiveView,
+    CameraStreamProvider,
+    LegacyLiveView,
+    parse_live_view_response,
+)
+from simplipy.errors import InvalidCredentialsError, UnsupportedStreamProviderError
 
 if TYPE_CHECKING:
     from simplipy.system.v3 import SystemV3
@@ -15,6 +24,7 @@ if TYPE_CHECKING:
 DEFAULT_AUDIO_ENCODING = "AAC"
 DEFAULT_MEDIA_URL_BASE = "https://media.simplisafe.com/v1"
 DEFAULT_VIDEO_WIDTH = 1280
+WEBRTC_URL_BASE = "https://app-hub.prd.aser.simplisafe.com/v2"
 
 
 class CameraTypes(Enum):
@@ -85,6 +95,99 @@ class Camera(DeviceV3):
             The camera serial number.
         """
         return self._serial
+
+    @property
+    def uuid(self) -> str:
+        """Return the camera UUID used by media and app-hub endpoints.
+
+        The historic ``serial`` property also contains this UUID. A hardware
+        serial in the subscription payload can be a different identifier.
+
+        Returns:
+            The camera UUID.
+        """
+        return self._serial
+
+    @property
+    def webrtc_provider(self) -> str | None:
+        """Return the camera's advertised WebRTC provider.
+
+        Returns:
+            The raw provider name, or None when none is advertised.
+        """
+        admin = self.camera_settings.get("admin")
+        if not isinstance(admin, Mapping):
+            return None
+        provider = admin.get("webRTCProvider")
+        return provider if isinstance(provider, str) and provider else None
+
+    @property
+    def stream_provider(self) -> CameraStreamProvider:
+        """Return the live-view transport selected by the camera settings.
+
+        Returns:
+            A known transport, or UNKNOWN for a new provider.
+        """
+        admin = self.camera_settings.get("admin")
+        if isinstance(admin, Mapping):
+            raw_provider = admin.get("webRTCProvider")
+            if raw_provider is not None and not isinstance(raw_provider, str):
+                return CameraStreamProvider.UNKNOWN
+        provider = self.webrtc_provider
+        if provider is None or provider == "simplisafe":
+            return CameraStreamProvider.LEGACY
+        try:
+            return CameraStreamProvider(provider)
+        except ValueError:
+            return CameraStreamProvider.UNKNOWN
+
+    async def async_get_live_view(
+        self,
+        width: int = DEFAULT_VIDEO_WIDTH,
+        audio_encoding: str = DEFAULT_AUDIO_ENCODING,
+    ) -> CameraLiveView:
+        """Fetch fresh credentials for one camera viewing session.
+
+        Kinesis and LiveKit use the app-hub API, with the normal API token
+        refresh/retry policy. Legacy FLV uses a bearer header, never a token
+        query parameter. This method does not cache sessions or open a stream.
+
+        Args:
+            width: The video width for legacy FLV cameras.
+            audio_encoding: The audio encoding for legacy FLV cameras.
+
+        Returns:
+            A typed provider response containing transient credentials.
+
+        Raises:
+            InvalidCredentialsError: If no authenticated token is available.
+            UnsupportedStreamProviderError: If the provider is unsupported.
+            LiveViewError: If the live-view response is incomplete or malformed.
+            RequestError: If an API request fails.
+        """
+        provider = self.stream_provider
+        if provider == CameraStreamProvider.UNKNOWN:
+            raise UnsupportedStreamProviderError("Unsupported camera stream provider")
+        api = self._system._api  # pylint: disable=protected-access
+        if provider == CameraStreamProvider.LEGACY:
+            # authCheck is read-only and goes through the refresh/retry wrapper;
+            # obtain the current bearer after a possible expired-token refresh.
+            await api.async_request("get", "api/authCheck", sensitive_response=True)
+            if not api.access_token:
+                raise InvalidCredentialsError("No authenticated camera access token")
+            return LegacyLiveView(
+                url=self.video_url(width=width, audio_encoding=audio_encoding),
+                headers=MappingProxyType(
+                    {"Authorization": f"Bearer {api.access_token}"}
+                ),
+            )
+        data = await api.async_request(
+            "get",
+            f"cameras/{quote(self.uuid, safe='')}/{self._system.system_id}/live-view",
+            url_base=WEBRTC_URL_BASE,
+            sensitive_response=True,
+        )
+        return parse_live_view_response(provider, data)
 
     @property
     def shutter_open_when_away(self) -> bool:
